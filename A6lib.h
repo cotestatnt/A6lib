@@ -94,16 +94,13 @@ public:
     byte deleteSMS(int index);
     byte setSMScharset(String charset);
 
-    void setVol(byte level);
-    void enableSpeaker(byte enable);
-
     String getRealTimeClock();
 
     SoftwareSerial *A6conn;
 private:
     String read();
-    byte A6command(const char *command, const char *resp1, const char *resp2, int timeout, int repetitions, String *response);
-    byte A6waitFor(const char *resp1, const char *resp2, int timeout, String *response);
+    byte A6command(const char *command, const char *resp1, const char *resp2, unsigned int timeout, int repetitions, String *response);
+    byte A6waitFor(const char *resp1, const char *resp2, unsigned int timeout, String *response);
     long detectRate();
     char setRate(long baudRate);
 };
