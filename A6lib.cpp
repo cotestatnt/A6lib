@@ -56,9 +56,6 @@ byte A6lib::begin(long baudRate) {
     // Echo off.
     A6command("ATE0", "OK", "yy", A6_CMD_TIMEOUT, 2, NULL);
 
-    // Switch audio to headset.
-    enableSpeaker(0);
-
     // Set caller ID on.
     A6command("AT+CLIP=1", "OK", "yy", A6_CMD_TIMEOUT, 2, NULL);
 
@@ -151,22 +148,22 @@ void A6lib::hangUp() {
 callInfo A6lib::checkCallStatus() {
     char number[50];
     String response = "";
-    uint32_t respStart = 0, matched = 0;
-    callInfo cinfo = (const struct callInfo) {
-        0
-    };
+    int respStart = 0;
+    callInfo cinfo;
 
     // Issue the command and wait for the response.
     A6command("AT+CLCC", "OK", "+CLCC", A6_CMD_TIMEOUT, 2, &response);
 
     // Parse the response if it contains a valid +CLCC.
     respStart = response.indexOf("+CLCC");
-    if (respStart >= 0) {
-        matched = sscanf(response.substring(respStart).c_str(), "+CLCC: %d,%d,%d,%d,%d,\"%s\",%d", &cinfo.index, &cinfo.direction, &cinfo.state, &cinfo.mode, &cinfo.multiparty, number, &cinfo.type);
-        cinfo.number = String(number);
+    if (respStart != -1) {
+        sscanf(response.substring(respStart).c_str(), "+CLCC: %d,%d,%d,%d,%d,\"%s\",%d", 
+		(int*)&cinfo.index, (int*)&cinfo.direction, (int*)&cinfo.state, (int*)&cinfo.mode, 
+		(int*)&cinfo.multiparty, number, (int*)&cinfo.type);
+		cinfo.number = String(number);
     }
 
-    uint8_t comma_index = cinfo.number.indexOf('"');
+    int comma_index = cinfo.number.indexOf('"');
     if (comma_index != -1) {
         logln("Extra comma found.");
         cinfo.number = cinfo.number.substring(0, comma_index);
@@ -179,7 +176,7 @@ callInfo A6lib::checkCallStatus() {
 // Get the strength of the GSM signal.
 int A6lib::getSignalStrength() {
     String response = "";
-    uint32_t respStart = 0;
+    int respStart = 0;
     int strength, error  = 0;
 
     // Issue the command and wait for the response.
@@ -257,7 +254,7 @@ int A6lib::getSMSLocsOfType(int* buf, int maxItems, String type) {
     command += "\"";
 
     // Issue the command and wait for the response.
-    byte status = A6command(command.c_str(), "\xff\r\nOK\r\n", "\r\nOK\r\n", A6_CMD_TIMEOUT, 2, &response);
+    A6command(command.c_str(), "\xff\r\nOK\r\n", "\r\nOK\r\n", A6_CMD_TIMEOUT, 2, &response);
 
     int seqStartLen = seqStart.length();
     int responseLen = response.length();
@@ -285,21 +282,18 @@ SMSmessage A6lib::readSMS(int index) {
     // Issue the command and wait for the response.
     sprintf(buffer, "AT+CMGR=%d", index);
     A6command(buffer, "\xff\r\nOK\r\n", "\r\nOK\r\n", A6_CMD_TIMEOUT, 2, &response);
-
-    char message[200];
+   
     char number[50];
     char date[50];
     char type[10];
-    int respStart = 0, matched = 0;
-    SMSmessage sms = (const struct SMSmessage) {
-        "", "", ""
-    };
+    int respStart = 0;
+    SMSmessage sms = (const struct SMSmessage) {"", "", ""};
 
     // Parse the response if it contains a valid +CLCC.
     respStart = response.indexOf("+CMGR");
     if (respStart >= 0) {
         // Parse the message header.
-        matched = sscanf(response.substring(respStart).c_str(), "+CMGR: \"REC %s\",\"%s\",,\"%s\"\r\n", type, number, date);
+        sscanf(response.substring(respStart).c_str(), "+CMGR: \"REC %s\",\"%s\",,\"%s\"\r\n", type, number, date);
         sms.number = String(number);
         sms.date = String(date);
         // The rest is the message, extract it.
@@ -325,29 +319,6 @@ byte A6lib::setSMScharset(String charset) {
 }
 
 
-// Set the volume for the speaker. level should be a number between 5 and
-// 8 inclusive.
-void A6lib::setVol(byte level) {
-    char buffer[30];
-
-    // level should be between 5 and 8.
-    level = min(max(level, 5), 8);
-    sprintf(buffer, "AT+CLVL=%d", level);
-    A6command(buffer, "OK", "yy", A6_CMD_TIMEOUT, 2, NULL);
-}
-
-
-// Enable the speaker, rather than the headphones. Pass 0 to route audio through
-// headphones, 1 through speaker.
-void A6lib::enableSpeaker(byte enable) {
-    char buffer[30];
-
-    // enable should be between 0 and 1.
-    enable = min(max(enable, 0), 1);
-    sprintf(buffer, "AT+SNFS=%d", enable);
-    A6command(buffer, "OK", "yy", A6_CMD_TIMEOUT, 2, NULL);
-}
-
 
 
 /////////////////////////////////////////////
@@ -363,7 +334,7 @@ long A6lib::detectRate() {
 
     // Try to autodetect the rate.
     logln("Autodetecting connection rate...");
-    for (int i = 0; i < countof(rates); i++) {
+    for (byte i = 0; i < countof(rates); i++) {
         rate = rates[i];
 
         A6conn->begin(rate);
@@ -399,7 +370,7 @@ char A6lib::setRate(long baudRate) {
 
     // Change the rate to the requested.
     char buffer[30];
-    sprintf(buffer, "AT+IPR=%d", baudRate);
+    sprintf(buffer, "AT+IPR=%lu", baudRate);
     A6command(buffer, "OK", "+IPR=", A6_CMD_TIMEOUT, 3, NULL);
 
     logln("Switching to the new rate...");
@@ -419,7 +390,7 @@ String A6lib::read() {
     }
 
     // XXX: Replace NULs with \xff so we can match on them.
-    for (int x = 0; x < reply.length(); x++) {
+    for (uint16_t x = 0; x < reply.length(); x++) {
         if (reply.charAt(x) == 0) {
             reply.setCharAt(x, 255);
         }
@@ -429,7 +400,7 @@ String A6lib::read() {
 
 
 // Issue a command.
-byte A6lib::A6command(const char *command, const char *resp1, const char *resp2, int timeout, int repetitions, String *response) {
+byte A6lib::A6command(const char *command, const char *resp1, const char *resp2, unsigned int timeout, int repetitions, String *response) {
     byte returnValue = A6_NOTOK;
     byte count = 0;
 
@@ -455,9 +426,8 @@ byte A6lib::A6command(const char *command, const char *resp1, const char *resp2,
 
 
 // Wait for responses.
-byte A6lib::A6waitFor(const char *resp1, const char *resp2, int timeout, String *response) {
-    unsigned long entry = millis();
-    int count = 0;
+byte A6lib::A6waitFor(const char *resp1, const char *resp2, unsigned int timeout, String *response) {
+    unsigned int entry = millis();    
     String reply = "";
     byte retVal = 99;
     do {
